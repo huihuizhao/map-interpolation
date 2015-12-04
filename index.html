@@ -10,11 +10,10 @@
 
 .circle-station {
   fill:white;
-
   stroke:rgba(82, 82, 82, 1);
   stroke-linejoin: round;
   stroke-linecap: round;
-  stroke-width: 2;
+  stroke-width: 1;
 }
 
 </style>
@@ -56,8 +55,8 @@ d3.json("FRA.geo.json", function(error, france) {
     if (error) throw error;
 
           // number of cells on the x (width) and the y (height) axis
-          var nx = 100;
-          var ny = 80;
+          var nx = 200;
+          var ny = 100;
 
           var Grid = [];
           for (ix = 0;ix<=nx;ix++){
@@ -69,7 +68,7 @@ d3.json("FRA.geo.json", function(error, france) {
 
           Grid.forEach(function(x){
             var dist = data.features.map(function(p){
-              return Math.max(d3.geo.distance(x.c,p.geometry.coordinates)* 6378.16,0.0001)
+              return Math.pow(Math.max(d3.geo.distance(x.c,p.geometry.coordinates)* 6378.16,0.01),2)
             })
             var nom = dist.reduce(function(a,b,i){
               return a + data.features[i].properties.value/b
@@ -105,9 +104,9 @@ d3.json("FRA.geo.json", function(error, france) {
           var c = new Conrec,
               xs = d3.range(0, GridFlat.length),
               ys = d3.range(0, GridFlat[0].length),
-              zs = d3.range(10,25,1),
+              zs = d3.range(15,25,0.5),
               xscale = d3.scale.linear().range([0, width]).domain([0, GridFlat.length]),
-              yscale = d3.scale.linear().range([height, 0]).domain([0, GridFlat[0].length])
+              yscale = d3.scale.linear().range([0, height]).domain([0, GridFlat[0].length])
           c.contour(GridFlat, 0, xs.length-1, 0, ys.length-1, xs, ys, zs.length, zs);
           console.log(xs)
           console.log(ys)
@@ -123,9 +122,9 @@ d3.json("FRA.geo.json", function(error, france) {
               .style("stroke","black")
               .attr("d", d3.svg.line()
                 .x(function(d) {
-                  console.log(xscale(d.x))
+                  //console.log(xscale(d.x))
                   return xscale(d.x); })
-                .y(function(d) { return yscale(d.x); }));
+                .y(function(d) { return yscale(d.y); }));
 
                 console.log(data)
                 points.selectAll('g')
@@ -141,7 +140,7 @@ d3.json("FRA.geo.json", function(error, france) {
                   var c = d.geometry.coordinates
                   return projection(c)[1];
                 })
-                .attr('r',10)
+                .attr('r',4)
                 .style('fill',function(d){
                   //console.log(d.properties.value)
                   return colours(d.properties.value)
