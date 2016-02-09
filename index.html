@@ -45,13 +45,14 @@ var svg = d3.select("body").append("svg")
 var tile = svg.append('g');
 var country = svg.append('g')
 var points = svg.append('g');
+var pointsFit = svg.append('g');
 
 var colorRamp = ["#6363FF", "#6373FF", "#63A3FF", "#63E3FF", "#63FFFB", "#63FFCB",
                "#63FF9B", "#63FF6B", "#7BFF63", "#BBFF63", "#DBFF63", "#FBFF63",
                "#FFD363", "#FFB363", "#FF8363", "#FF7363", "#FF6364"]
 
 var colours = d3.scale.quantize()
-  .domain([-5,10])
+  .domain([-5,15])
   .range(colorRamp);
 
 d3.json("FRA.geo.json", function(error, france) {
@@ -61,38 +62,40 @@ d3.json("FRA.geo.json", function(error, france) {
     if (error) throw error;
 
           // number of cells on the x (width) and the y (height) axis
-          var nx = 30;
-          var ny = 15;
-
+          var nx = 100;
+          var ny = 50;
+          // Creation of a grid
           var Grid = [];
           for (ix = 0;ix<=nx;ix++){
             for(iy = 0;iy<=ny;iy++){
               var xy = [width/nx*ix,height/ny*iy]
+              // g = index on the grid
+              // s = position on the gridth (in width, height)
+              // c = coordinates
+              // v = value
               Grid.push({'g':[ix,iy],'s':xy,'c':projection.invert(xy),'v':null})
             }
           }
-
-          var model = "gaussian";
-          var sigma2 = 1, alpha = 100;
+          //console.log(Grid)
+          var model = "spherical";
+          var sigma2 = 0, alpha = 100;
           var kz = data.features.map(function(x){return x.properties.value})
-          var kx = data.features.map(function(x){return projection(x.geometry.coordinates)[0]})
-          var ky = data.features.map(function(x){return projection(x.geometry.coordinates)[1]})
-          //console.log(kx)
-          //console.log(ky)
-          //console.log(kz)
+          var kx = data.features.map(function(x){return x.geometry.coordinates[0]})
+          var ky = data.features.map(function(x){return x.geometry.coordinates[1]})
 
           var fitModel = kriging.train(kz, kx, ky, model, sigma2, alpha);
+          // Verify model on training set
           data.features.forEach(function(x){
-            var pr = projection(x.geometry.coordinates)
-            var kp = kriging.predict(pr[0], pr[1], fitModel);
-            console.log([x.properties.value,kp])
-
+            var kp = kriging.predict(x.geometry.coordinates[0], x.geometry.coordinates[1], fitModel);
+            x.value = x.properties.value;
+            x.predict = Math.round(kp*10)/10;
+            x.err = Math.abs(x.properties.value - x.predict);
+            //console.log(x)
           })
 
           Grid.forEach(function(x){
-            return x.v = kriging.predict(x.s[0], x.s[1], fitModel);
+            return x.v = kriging.predict(x.c[0], x.c[1], fitModel);
           })
-          //console.log(Grid)
 
           var GridFlat = Array.apply(null, Array(nx+1)).map(function(){
             return Array.apply(null, Array(ny+1)).map(function(){
@@ -100,13 +103,15 @@ d3.json("FRA.geo.json", function(error, france) {
             })
           })
 
-
           Grid.forEach(function(x){
             GridFlat[x['g'][0]][x['g'][1]] = x['v'];
           })
-          console.log([GridFlat.length,GridFlat[0].length])
-          console.log(GridFlat)
+
+          //console.log([GridFlat.length,GridFlat[0].length])
           var cliff = -1000;
+          // cliff  cliff cliff
+          // cliff    X   cliff
+          // cliff  cliff cliff
           GridFlat.push(d3.range(GridFlat[0].length).map(function() { return cliff; }));
           GridFlat.unshift(d3.range(GridFlat[0].length).map(function() { return cliff; }));
           GridFlat.forEach(function(d) {
@@ -118,30 +123,79 @@ d3.json("FRA.geo.json", function(error, france) {
           var c = new Conrec,
               xs = d3.range(0, GridFlat.length),
               ys = d3.range(0, GridFlat[0].length),
-              zs = d3.range(0,15,1),
+              zs = d3.range(-10,25,0.2),
               xscale = d3.scale.linear().range([0, width]).domain([0, GridFlat.length]),
               yscale = d3.scale.linear().range([0, height]).domain([0, GridFlat[0].length])
           c.contour(GridFlat, 0, xs.length-1, 0, ys.length-1, xs, ys, zs.length, zs);
+
+          var contourGeoJson = {
+            "type":"FeatureCollection",
+            "features":[]
+          }
+          c.contourList().forEach(function(x){
+            contourGeoJson.features.push({
+              "type":"Feature",
+              "properties":{"value":x.level},
+              "geometry":{"type":"Polygon","coordinates":[function(){
+                return x.map(function(e){return projection.invert([xscale(e.x),yscale(e.y)])})
+              }()]}
+            })
+          })
+          //console.log(contourGeoJson)
+          // {"type":"Feature","id":"FRA","properties":{"name":"France"},"geometry":{"type":"Polygon","coordinates":[[[3.588184,50.378992],[4.286023,49.907497],[4.799222,49.985373],[5.674052,49.529484],[5.897759,49.442667],[6.18632,49.463803],[6.65823,49.201958],[8.099279,49.017784],[7.593676,48.333019],[7.466759,47.620582],[7.192202,47.449766],[6.736571,47.541801],[6.768714,47.287708],[6.037389,46.725779],[6.022609,46.27299],[6.5001,46.429673],[6.843593,45.991147],[6.802355,45.70858],[7.096652,45.333099],[6.749955,45.028518],[7.007562,44.254767],[7.549596,44.127901],[7.435185,43.693845],[6.529245,43.128892],[4.556963,43.399651],[3.100411,43.075201],[2.985999,42.473015],[1.826793,42.343385],[0.701591,42.795734],[0.338047,42.579546],[-1.502771,43.034014],[-1.901351,43.422802],[-1.384225,44.02261],[-1.193798,46.014918],[-2.225724,47.064363],[-2.963276,47.570327],[-4.491555,47.954954],[-4.59235,48.68416],[-3.295814,48.901692],[-1.616511,48.644421],[-1.933494,49.776342],[-0.989469,49.347376],[1.338761,50.127173],[1.639001,50.946606],[2.513573,51.148506],[2.658422,50.796848],[3.123252,50.780363],[3.588184,50.378992]]]}}
+          // ]}
           //console.log(xs)
           //console.log(ys)
-          //console.log(c.contourList())
 
-          tile
-              .attr("width", width)
-              .attr("height", height)
-            .selectAll("path")
-              .data(c.contourList())
-            .enter().append("path")
-              .style("fill",function(d) {
-                console.log(d.level)
-                return colours(d.level);})
-              .attr("d", d3.svg.line()
-                .x(function(d) {
-                  //console.log(xscale(d.x))
-                  return xscale(d.x); })
-                .y(function(d) { return yscale(d.y); }));
+          tile.selectAll('path')
+              .data(contourGeoJson.features)
+              .enter().append("path")
+              .style("fill",function(d,i){
+                console.log(d.geometry.coordinates)
+                  return colours(d.properties.value);
+              })
+              .attr('opacity',1)
+              .attr("d", path)
 
-                console.log(data)
+          // tile.insert("path", ".graticule")
+          //     .datum(contourGeoJson)
+          //     .attr("class", "land")
+          //     .attr("d", path);
+          //
+          // tile
+          //     .attr("width", width)
+          //     .attr("height", height)
+          //   .selectAll("path")
+          //     .data(c.contourList())
+          //   .enter().append("path")
+          //     .style("fill",function(d) {
+          //       return colours(d.level);})
+          //     .attr("d", d3.svg.line()
+          //       .x(function(d) {
+          //         //console.log(xscale(d.x))
+          //         return xscale(d.x); })
+          //       .y(function(d) { return yscale(d.y); }));
+
+
+                pointsFit.selectAll('g')
+                .data(Grid)
+                .enter()
+                .append('circle')
+                .attr('class','circle-station')
+                .attr("cx", function(d) {
+                  return projection(d.c)[0];
+                })
+                .attr("cy", function(d) {
+                  return projection(d.c)[1];
+                })
+                .attr('r',function(d){
+                  return 3
+                })
+                .style('fill',function(d){
+                  return colours(d.v)
+                })
+                .style('opacity',0.7)
+
                 points.selectAll('g')
                 .data(data.features)
                 .enter()
@@ -155,7 +209,9 @@ d3.json("FRA.geo.json", function(error, france) {
                   var c = d.geometry.coordinates
                   return projection(c)[1];
                 })
-                .attr('r',4)
+                .attr('r',function(d){
+                  return d.err+5
+                })
                 .style('fill',function(d){
                   //console.log(d.properties.value)
                   return colours(d.properties.value)
